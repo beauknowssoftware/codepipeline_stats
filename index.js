@@ -1,13 +1,30 @@
 const AWS = require('aws-sdk')
 const moment = require('moment')
 
-const pipeline = new AWS.CodePipeline({ region: 'us-east-2' })
+const region = process.argv[3] 
+
+const pipeline = new AWS.CodePipeline({ region })
+
+async function getExecutionsRec(currentExecutions = [], nextToken) {
+    console.log(`getting executions`)
+
+    const results = await pipeline.listPipelineExecutions({
+        pipelineName: process.argv[2],
+        nextToken,
+    }).promise()
+
+    const executions = [...currentExecutions, ...results.pipelineExecutionSummaries]
+
+    if (results.nextToken) {
+        return await getExecutionsRec(executions, results.nextToken)
+    } else {
+        return executions
+    }
+}
 
 async function getSummaries() {
-  const results = await pipeline.listPipelineExecutions({
-    pipelineName: process.argv[2],
-  }).promise()
-  return results.pipelineExecutionSummaries
+  const results = await getExecutionsRec()
+  return results
   .filter(function(summary) {
     return summary.status !== 'InProgress'
   })
