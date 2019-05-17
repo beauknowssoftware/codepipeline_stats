@@ -15,7 +15,7 @@ node_modules: package.json
 	touch node_modules
 
 execute: node_modules
-	node . ${PIPELINE} $$(aws configure get region)
+	node . 
 
 clean:
 	${RM} $$(cat ./.gitignore)

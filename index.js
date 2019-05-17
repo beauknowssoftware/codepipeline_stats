@@ -1,15 +1,13 @@
 const AWS = require('aws-sdk')
 const moment = require('moment')
 
-const region = process.argv[3] 
+const pipeline = new AWS.CodePipeline({ region: 'us-west-2' })
 
-const pipeline = new AWS.CodePipeline({ region })
-
-async function getExecutionsRec(currentExecutions = [], nextToken) {
-    console.log(`getting executions`)
+async function getExecutionsRec(pipelineName, currentExecutions = [], nextToken) {
+    console.log(`getting executions for ${pipelineName}`)
 
     const results = await pipeline.listPipelineExecutions({
-        pipelineName: process.argv[2],
+        pipelineName: pipelineName,
         nextToken,
     }).promise()
 
@@ -22,8 +20,8 @@ async function getExecutionsRec(currentExecutions = [], nextToken) {
     }
 }
 
-async function getSummaries() {
-  const results = await getExecutionsRec()
+async function getSummaries(pipelineName) {
+  const results = await getExecutionsRec(pipelineName)
   return results
   .filter(function(summary) {
     return summary.status !== 'InProgress'
@@ -104,8 +102,8 @@ function calculateFeedbackTime(results) {
   return moment.duration(sum / results.length, 'minutes').humanize()
 }
 
-async function run() {
-  const results = await getSummaries()
+async function getPipelineMetrics(pipelineName) {
+  const results = await getSummaries(pipelineName)
 
   const duration = moment.duration(calculateTotalDuration(results), 'minutes').humanize()
   const cycleTime = calculateCycleTime(results)
@@ -114,7 +112,35 @@ async function run() {
   const meanTimeToRecover = calculateMeanTimeToRecover(results)
   const feedbackTime = calculateFeedbackTime(results)
 
-  console.log({ cycleTime, leadTime, meanTimeBetweenFailure, meanTimeToRecover, duration, feedbackTime })
+  return { cycleTime, leadTime, meanTimeBetweenFailure, meanTimeToRecover, duration, feedbackTime }
+}
+
+async function getPipelineNamesRec(currentPipelineNames = [], nextToken) {
+    console.log(`getting pipeline names`)
+
+    const results = await pipeline.listPipelines({
+        nextToken,
+    }).promise()
+
+    const pipelineNames = [...currentPipelineNames, ...results.pipelines.map(p => p.name)]
+
+    if (results.nextToken) {
+        return await getPipelineNamesRec(pipelineNames, results.nextToken)
+    } else {
+        return pipelineNames
+    }
+}
+
+async function run() {
+    const pipelineNames = await getPipelineNamesRec()
+    const results = []
+    for (const pipelineName of pipelineNames) {
+        const pipelineResult = await getPipelineMetrics(pipelineName)
+        results.push(pipelineResult)
+    }
+    for (const result of results) {
+        console.log(result)
+    }
 }
 
 run().catch(function(error) {
